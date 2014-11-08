@@ -203,11 +203,18 @@ class MapView():
                     locuses = [(4*x+2,4*y+2),(4*x+1,4*y+1),(4*x+2,4*y+1),\
                                (4*x+3,4*y+1),(4*x+1,4*y+2),(4*x+3,4*y+2),\
                                (4*x+1,4*y+3),(4*x+2,4*y+3),(4*x+3,4*y+3)][:count_item]
-                    for item,loc in zip(mapm.cell_dict[x][y],locuses):
+                    ##Represent 9 items in cell at most
+                    for item,loc in zip(mapm.cell_dict[x][y][0:9],locuses):
                         content_1[loc[1]][loc[0]] = self.item2represent[item]
 
+        ###Content info: User Info
         content_2 = ["","",turn,""]
         content_2 += ["################################"]
+        ##replace itemsid with items represents
+        for itemid in ["message_A","message_B","key_1","key_2","key_3","key_4"]:
+            if itemid in step:
+                step = step.replace(itemid,self.item2represent[itemid])
+
         content_2 += step.split("\t")
         content_2 += ["################################","",""]
         for player in ["player_A","player_B","gatekeeper"]:
@@ -236,12 +243,17 @@ class GameController():
         step_left = random.randint(1,6)
         step_info = "You got %d step left\t"%step_left
         self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+
+        ##Move 
         while step_left > 0:
             step_info = "You got %d step left\t"%step_left
             self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
 
             move = get_action()
+            ## If not valid_move, continue
             valid_move = False
+            
+            ##Exit if move == "ESC" (double pres Esc or control+c)
             if move == "ESC":
                 return "ESC"
                 ##TODO save current game/ensure exit
@@ -262,24 +274,145 @@ class GameController():
                                  2*current_cell[1]+2*adj_cell[1]+2)
             item_bewteen_cell = self.gamemap.grid_dict[grid_between_cell[0]]\
                                                       [grid_between_cell[1]]
+            ##Check if adjacent is wall or space
             if item_bewteen_cell == "wall":
                 continue
             elif item_bewteen_cell == "space":
                 valid_move = True
             else:
+                ##There should be no forth option except for["wall","space","door_x"] 
                 assert item_bewteen_cell.startswith("door_")
                 door_id = item_bewteen_cell.split("_")[1]
                 for item in self.package_dict[player]:
+                    ##If player has key and the key number == door numbe
                     if item.startswith("key_") and item.split("_")[1] == door_id:
                         valid_move = True
             
             if valid_move:
+                ## If it is a valid_move, move and continue
                 self.gamemap.cell_dict[current_cell[0]][current_cell[1]].remove(player)
                 self.gamemap.cell_dict[adj_cell[0]][adj_cell[1]].append(player)
                 self.gamemap.player_loc[player] = adj_cell
                 step_left -= 1
+        
+        ##Do Action after move
+        ##Only one action can be done each turn
+        step_info = "Action: (D)rop   (P)ick   (E)nd\t"
+        self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
 
-        #step_info = "Action: (D)rop   (P)ick   (E)nd\t"
+        action = get_action()
+        player_loc = self.gamemap.player_loc[player]
+        cell_items = self.gamemap.cell_dict[player_loc[0]][player_loc[1]]
+
+        while action not in set(["D","P","E","ESC"]):
+            step_info = "%s id not a valid action\tAction: (D)rop   (P)ick   (E)nd"%action
+            self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+            action = get_action()
+
+        if action == "ESC":
+            return "ESC"
+        
+        elif action == "E":
+            step_info = "\tYour Turn is End"
+            self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+            time.sleep(1)
+            return 1
+
+        elif action == "D":
+            dropable_items = ["message_A","message_B","key_1","key_2","key_3","key_4"]
+            dropable_items_in_package = []
+            for item in self.package_dict[player]:
+                if item in dropable_items:
+                    dropable_items_in_package.append(item)
+            dropable_items_in_package = list(set(dropable_items_in_package))
+
+            ## If cell is full, you can not drop anything
+            if len(cell_items) >= 9:
+                step_info = "Cell is full, you can not drop here\tYour Turn is End"
+                self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                time.sleep(1)
+                return 1
+
+            ## If player's package has nothing, end turn
+            if len(dropable_items_in_package) == 0:
+                step_info = "You have nothing to Drop, \tYour Turn is End"
+                self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                time.sleep(1)
+                return 1
+            
+            if len(dropable_items_in_package) == 1:
+                choice = 0
+            else:
+                drop_choice = []
+                for i,item in enumerate(dropable_items_in_package):
+                    ##drop_choice index starts from 1, while real list index starts from 0
+                    drop_choice.append("%d:%s"%(i+1,item))
+                step_info = "Choose Something to Drop, \t %s"%" ".join(drop_choice)
+                self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                choice = get_action()
+                if choice not in set([str(i+1) for i in xrange(len(dropable_items_in_package))]):
+                    step_info = "%s is not a valid choice\tYour Turn is End"%choice
+                    self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                    time.sleep(1)
+                    return 1
+                else:
+                    choice = int(choice)-1
+
+            item = dropable_items_in_package[choice]
+            cell_items.append(item)
+            ##replace first item with "empty"
+            self.package_dict[player][self.package_dict[player].index(item)] = "empty"
+            step_info = "You droped %s \tYour Turn is End"%item
+            self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+            time.sleep(1)
+            return 1
+
+        elif action == "P":##Pick up something is possible
+            pickable_items = ["message_A","message_B","key_1","key_2","key_3","key_4"]
+            pickable_items_in_cell = []
+            for item in cell_items:
+                if item in pickable_items:
+                    pickable_items_in_cell.append(item)
+            ##filter out redundant items 
+            pickable_items_in_cell = list(set(pickable_items_in_cell))
+
+            if len(pickable_items_in_cell) == 0:
+                step_info = "There is nothing pickable in this cell \t Your Turn is End"
+                self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                time.sleep(1)
+                return 1
+
+            if "empty" not in self.package_dict[player]:
+                step_info = "Your package is full, drop something first \t Your Turn is End"
+                self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                time.sleep(1)
+                return 1
+
+            ## if only one kind of item in that cell, pick that
+            if len(pickable_items_in_cell) == 1:
+                choice = 0
+            else:
+                pick_choice = []
+                for i,item in enumerate(pickable_items_in_cell):
+                    pick_choice.append("%d:%s"%(i+1,item))
+                step_info = "Pickup something \t %s"%" ".join(pick_choice)
+                self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                choice = get_action()
+                if choice not in set([str(i+1) for i in xrange(len(pickable_items_in_cell))]):
+                    step_info = "%s is not a valid choice\tYour Turn is End"%choice
+                    self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                    time.sleep(1)
+                    return 1
+                else:
+                    choice = int(choice)-1
+
+            item = pickable_items_in_cell[0]
+            cell_items.remove(item)
+            self.package_dict[player][self.package_dict[player].index("empty")] = item
+            step_info = "Picked %s \t Your Turn is End"%(item)
+            self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+            time.sleep(1)
+            return 1
 
     def play(self):
         game_not_end = True
@@ -290,12 +423,12 @@ class GameController():
                     game_not_end = False
                     break
                 if set(self.package_dict["gatekeeper"]) == set(["message_A","message_B"]):
-                    mapview.show_map("GateKeeper WIN","\t\t",self.package_dict)
+                    self.mapview.show_map(self.gamemap,"","    GateKeeper WIN\t",self.package_dict)
                     game_not_end = False
                     break
                 elif self.package_dict["player_A"].count("message_B") +\
                         self.package_dict["player_B"].count("message_A") >= 5:
-                    mapview.show_map("Player_A & Player_B WIN","\t\t",self.package_dict)
+                    self.mapview.show_map(self.gamemap,"","Player_A & Player_B WIN\t\t",self.package_dict)
                     game_not_end = False
                     break
                 else:
