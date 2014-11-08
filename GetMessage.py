@@ -43,7 +43,7 @@ def get_action():
 
 class MapModel():
     def __init__(self):
-        self.width = 5
+        self.width = 8
         self.height = 5
         self.cell_size = (self.width, self.height)
         self.grid_width = self.width*4+1
@@ -76,7 +76,7 @@ class MapModel():
         for x in xrange(self.grid_width):
             for y in xrange(self.grid_height):
                 if (y%4 == 0) or (x %4 == 0):
-                    self.grid_dict[y][x] = "wall"
+                    self.grid_dict[x][y] = "wall"
 
         #generate door list
         door_list = []
