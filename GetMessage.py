@@ -5,6 +5,10 @@ import random
 import time
 import tty,termios
 
+MAP_WIDTH = 8
+MAP_HEIGHT = 5
+AI_GATEKEEPER = True
+
 class _Getch():
     def __call__(self):
         fd = sys.stdin.fileno()
@@ -43,8 +47,8 @@ def get_action():
 
 class MapModel():
     def __init__(self):
-        self.width = 8
-        self.height = 5
+        self.width = MAP_WIDTH
+        self.height = MAP_HEIGHT
         self.cell_size = (self.width, self.height)
         self.grid_width = self.width*4+1
         self.grid_height = self.height*4+1
@@ -412,13 +416,145 @@ class GameController():
             step_info = "Picked %s \t Your Turn is End"%(item)
             self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
             time.sleep(1)
-            return 1
+        return 1
 
-    def play(self):
+    def _AIgetekeeper_turn(self):
+        player = "gatekeeper"
+        turn_info = "AIgatekeeper's Turn"
+        step_info = "Rolling Dicer...\t"
+        self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+        time.sleep(1)
+        step_left = random.randint(1,6)
+        step_info = "AIgatekeeper got %d step left\t"%(step_left)
+        self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+        time.sleep(1)
+
+        ##Target locate
+        ##If there is any message on map, target = All msg
+        ##If there is no message on map, target = Player_B location
+        target_loc_set = set([])
+        for x in xrange(self.gamemap.width):
+            for y in xrange(self.gamemap.height):
+                for items in self.gamemap.cell_dict[x][y]:
+                    if items.startswith("message"):
+                        target_loc_set.add((x,y))
+        if len(target_loc_set) == 0:
+            target_loc_set.add(self.gamemap.player_loc["player_B"])
+
+        start_cell = self.gamemap.player_loc[player]
+        visited_cells = set([start_cell])
+        target_paths = []
+        ##if start_cell already in target_loc, target_paths add start_cell
+        if start_cell in target_loc_set:
+            target_paths.append([start_cell])
+        temp_paths = [[start_cell]]
+        ##temp_paths is a path FILO stack, record all paths to target_loc
+        while temp_paths:
+            current_path = temp_paths.pop(0)
+            current_cell = current_path[-1]
+            x,y = current_cell
+            for adj_cell in [(x-1,y),(x,y-1),(x+1,y),(x,y+1)]:
+                grid_between_cell = (2*current_cell[0]+2*adj_cell[0]+2,\
+                                     2*current_cell[1]+2*adj_cell[1]+2)
+                item_bewteen_cell = self.gamemap.grid_dict[grid_between_cell[0]]\
+                                                          [grid_between_cell[1]]
+                ##if adj_cell can be visit and not been visited, visit it.
+                if (item_bewteen_cell) != "space" or (adj_cell in visited_cells):
+                    continue
+
+                current_path_clone = [a for a in current_path]
+                current_path_clone.append(adj_cell)
+                visited_cells.add(adj_cell)
+
+                if adj_cell in target_loc_set:
+                    target_paths.append(current_path_clone)
+                temp_paths.append(current_path_clone)
+
+        for path in target_paths:
+            # The first cell of path == current gatekeeper cell, so starts with 1
+            if len(path[1:]) == 0:
+                ##Path has only one cell, the gatekeeper just in that the cell
+                ##Find a adjancent available cell, walk repeat these two cells
+                x,y = path[0]
+                last_node = path[0]
+                for adj_cell in [(x-1,y),(x,y-1),(x+1,y),(x,y+1)]:
+                    grid_between_cell = (2*x+2*adj_cell[0]+2,\
+                                         2*y+2*adj_cell[1]+2)
+                    item_bewteen_cell = self.gamemap.grid_dict[grid_between_cell[0]]\
+                                                              [grid_between_cell[1]]
+                    if item_bewteen_cell == "space":
+                        second_last_node = adj_cell
+                        break
+                for i in xrange(step_left-0):
+                    if i%2 == 0:
+                        path.append(second_last_node) 
+                    else:
+                        path.append(last_node)
+
+            elif len(path[1:]) < step_left:
+                #if path to target < step_left, fill it with last two step
+                last_node = path[-1]
+                second_last_node = path[-2]
+                for i in xrange(step_left - len(path[1:])):
+                    if i%2 == 0:
+                        path.append(second_last_node)
+                    else:
+                        path.append(last_node)
+
+        best_path = None
+        second_path = None
+        other_path = None
+        for path in target_paths:
+            if len(path[1:]) == step_left and path[-1] in target_loc_set:
+                best_path = path
+                break
+            elif len(path[1:]) == step_left:
+                second_path = path
+            else:
+                other_path = path
+
+        if best_path != None:
+            gatekeeper_path = best_path
+        elif second_path != None:
+            gatekeeper_path = second_path
+        else:
+            gatekeeper_path = other_path
+
+        last_cell = gatekeeper_path.pop(0)
+
+        while gatekeeper_path and step_left != 0:
+            current_cell = gatekeeper_path.pop(0)
+            self.gamemap.cell_dict[last_cell[0]][last_cell[1]].remove(player)
+            self.gamemap.cell_dict[current_cell[0]][current_cell[1]].append(player)
+            self.gamemap.player_loc[player] = current_cell
+            step_left -= 1
+            step_info = "AIgatekeeper got %d step left\t"%(step_left)
+            self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+            time.sleep(0.5) 
+            last_cell = current_cell
+
+        for item in self.gamemap.cell_dict[last_cell[0]][last_cell[1]]:
+            ##if cell has message, pickup message
+            if item.startswith("message_"):
+                self.gamemap.cell_dict[last_cell[0]][last_cell[1]].remove(item)
+                self.package_dict[player][self.package_dict[player].index("empty")] = item
+                step_info = "Picked up %s\t AIgatekeeper's Turn is End"%(item)
+                self.mapview.show_map(self.gamemap,turn_info,step_info,self.package_dict)
+                time.sleep(1)
+                return 1
+        return 1
+
+    def play(self,AIgatekeeper=None):
+        if AIgatekeeper == None:
+            AIgatekeeper == False
+
         game_not_end = True
         while game_not_end:
             for player in ["player_A","player_B","gatekeeper"]:
-                flag = self._playerturn(player)
+                if AIgatekeeper and player == "gatekeeper":
+                    flag = self._AIgetekeeper_turn()
+                else:
+                    flag = self._playerturn(player)
                 if flag == "ESC":
                     game_not_end = False
                     break
@@ -436,7 +572,7 @@ class GameController():
 
 def main():
     game = GameController()
-    game.play()
+    game.play(AI_GATEKEEPER)
 
 if __name__ == "__main__":
     main()

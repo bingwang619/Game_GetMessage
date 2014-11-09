@@ -37,4 +37,22 @@ Game_GetMessage
 + Player_A 拿到了6点移动点数，移动了4点后状态
 
 ![](img/PlayerMoving.png)
-	
+
+###Day 3. 主程序完成
+
+1. 地图大小和 gatekeeper 是否 AI 可以在程序开头的常量里修改。
+2. 完成物品拾取，丢弃
+3. 完成自动 gatekeeper 的算法，简单来说就是如果有 message，追 message，如果没有，追 player_B。
+4. 胜利条件判断
+
+部分截图：
+
++ 游戏开始
+
+![](img/GameStart2.png)
+
++ 游戏结束(player_A 和 player_B 虽然没有完成交换，但是 gatekeeper 已经没有胜利希望了。)
+
+![](img/GameFinish2.png)
+
+
